@@ -8,15 +8,18 @@
 
 #import "MMPhotoPickerController.h"
 #import "MMPhotoAssetController.h"
+#import "MMPhotoMacro.h"
+#import "MMPhotoUtil.h"
+#import "UIViewController+Top.h"
 
-static CGFloat rowHeight = 60.f;
+static CGFloat kRowHeight = 60.f;
 
 #pragma mark - ################## MMPhotoPickerController
 @interface MMPhotoPickerController () <UITableViewDelegate,UITableViewDataSource,UIAlertViewDelegate>
 
-@property (nonatomic, strong) UITableView * tableView;
-@property (nonatomic, strong) NSMutableArray<MMPhotoAlbum *> * photoAlbums;
-@property (nonatomic, strong) MMPhotoAlbum * selectPhotoAlbum;
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSMutableArray<MMPhotoAlbum *> *photoAlbums;
+@property (nonatomic, strong) MMPhotoAlbum *selectPhotoAlbum;
 
 @end
 
@@ -27,16 +30,11 @@ static CGFloat rowHeight = 60.f;
 {
     self = [super init];
     if (self) {
-        _isOrigin = NO;
-        _cropOption = NO;
-        _singleOption = NO;
-        _showEmptyAlbum = NO;
-        _showVideo = NO;
-        _showOriginOption = NO;
-        _maxNumber = 9;
-        _maskImgName = @"mmphoto_overlay";
-        _markedImgName = @"mmphoto_marked";
-        _mainColor = kMainColor;
+        self.showVideo = NO;
+        self.maximumNumber = 9;
+        self.mainColor = [UIColor colorWithRed:252.0/255.0 green:41.0/255.0 blue:72.0/255.0 alpha:1.0];
+        self.unselectIcon = [MMPhotoUtil imageNamed:@"mmphoto_unselect"];
+        self.selectIcon = [MMPhotoUtil imageNamed:@"mmphoto_select"];
     }
     return self;
 }
@@ -45,19 +43,13 @@ static CGFloat rowHeight = 60.f;
 {
     [super viewDidLoad];
     self.title = @"照片";
-    self.view.backgroundColor = RGBColor(240.0, 240.0, 240.0, 1.0);
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"取消" style:UIBarButtonItemStylePlain target:self action:@selector(barButtonItemAction:)];
+    self.view.backgroundColor = [UIColor colorWithWhite:0.9 alpha:1.0];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"取消" style:UIBarButtonItemStylePlain target:self action:@selector(rightBarItemAction)];
     [self.view addSubview:self.tableView];
-   
-    // 特殊处理(不支持视频裁剪)
-    if (_cropOption) {
-        _showVideo = NO;
-    }
     // 相册权限
     PHAuthorizationStatus authStatus = [PHPhotoLibrary authorizationStatus];
     [PHPhotoLibrary requestAuthorization:^(PHAuthorizationStatus status) {
-        
-        GCD_MAIN(^{ // 主线程
+        dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
             switch (status) {
                 case PHAuthorizationStatusAuthorized: { // 权限打开
                     [self loadAlbumData]; // 加载相册
@@ -66,11 +58,14 @@ static CGFloat rowHeight = 60.f;
                 case PHAuthorizationStatusDenied: // 权限拒绝
                 case PHAuthorizationStatusRestricted: { // 权限受限
                     if (authStatus == PHAuthorizationStatusNotDetermined) {
-                        [self barButtonItemAction:nil]; // 返回
+                        [self rightBarItemAction]; // 返回
                         return;
                     }
-                    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" delegate:self cancelButtonTitle:@"知道了" otherButtonTitles:nil, nil];
-                    [alert show];
+                    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                        [self rightBarItemAction];
+                    }]];
+                    [[UIViewController topViewController] presentViewController:alert animated:YES completion:nil];
                     break;
                 }
                 default:
@@ -80,60 +75,49 @@ static CGFloat rowHeight = 60.f;
     }];
 }
 
+- (void)viewWillAppear:(BOOL)animated
+{
+    [super viewWillAppear:animated];
+    [[UIApplication sharedApplication] setStatusBarStyle:UIStatusBarStyleLightContent];
+}
+
 #pragma mark - 相册列表
 - (void)loadAlbumData
 {
     self.photoAlbums = [[NSMutableArray alloc] init];
     // 获取智能相册
-    PHFetchResult * smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
+    PHFetchResult *smartAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeSmartAlbum subtype:PHAssetCollectionSubtypeAlbumRegular options:nil];
+    WEAKSELF
     [smartAlbums enumerateObjectsUsingBlock:^(PHAssetCollection * _Nonnull collection, NSUInteger idx, BOOL *stop) {
         // 过滤掉已隐藏、最近删除
         BOOL condition = (collection.assetCollectionSubtype != PHAssetCollectionSubtypeSmartAlbumAllHidden) && (collection.assetCollectionSubtype != 1000000201);
         if (!self.showVideo) { // 过滤掉视频
             condition = condition && (collection.assetCollectionSubtype !=  PHAssetCollectionSubtypeSmartAlbumVideos);
         }
-        if (condition)
-        {
+        if (condition) {
             NSArray<PHAsset *> * assets = [MMPhotoUtil getAllAssetWithCollection:collection ascending:NO];
-            if (!self.showEmptyAlbum) { // 不显示空相册
-                if ([assets count]) {
-                    MMPhotoAlbum * album = [[MMPhotoAlbum alloc] init];
-                    album.name = collection.localizedTitle;
-                    album.assetCount = assets.count;
-                    album.collection = collection;
-                    album.coverAsset = assets.firstObject;
-                    // '所有照片'置顶
-                    if (collection.assetCollectionSubtype == PHAssetCollectionSubtypeSmartAlbumUserLibrary) {
-                        [self.photoAlbums insertObject:album atIndex:0];
-                        _selectPhotoAlbum = album;
-                    } else {
-                        [self.photoAlbums addObject:album];
-                    }
-                }
-            } else { // 显示空相册
-                MMPhotoAlbum * album = [[MMPhotoAlbum alloc] init];
+            if ([assets count] > 0) { // 不显示空相册
+                MMPhotoAlbum *album = [[MMPhotoAlbum alloc] init];
                 album.name = collection.localizedTitle;
                 album.assetCount = assets.count;
                 album.collection = collection;
-                if (assets.count > 0) {
-                    album.coverAsset = assets.firstObject;
-                }
+                album.coverAsset = assets.firstObject;
                 // '所有照片'置顶
                 if (collection.assetCollectionSubtype == PHAssetCollectionSubtypeSmartAlbumUserLibrary) {
-                    _selectPhotoAlbum = album;
-                    [self.photoAlbums insertObject:album atIndex:0];
+                    [weakSelf.photoAlbums insertObject:album atIndex:0];
+                    weakSelf.selectPhotoAlbum = album;
                 } else {
-                    [self.photoAlbums addObject:album];
+                    [weakSelf.photoAlbums addObject:album];
                 }
             }
         }
     }];
     // 获取用户创建相册
-    PHFetchResult * userAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeSmartAlbumUserLibrary options:nil];
+    PHFetchResult *userAlbums = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeSmartAlbumUserLibrary options:nil];
     [userAlbums enumerateObjectsUsingBlock:^(PHAssetCollection * _Nonnull collection, NSUInteger idx, BOOL * _Nonnull stop) {
-        NSArray<PHAsset *> * assets = [MMPhotoUtil getAllAssetWithCollection:collection ascending:NO];
+        NSArray<PHAsset *> *assets = [MMPhotoUtil getAllAssetWithCollection:collection ascending:NO];
         if (assets.count > 0) {
-            MMPhotoAlbum * album = [[MMPhotoAlbum alloc] init];
+            MMPhotoAlbum *album = [[MMPhotoAlbum alloc] init];
             album.name = collection.localizedTitle;
             album.assetCount = assets.count;
             album.coverAsset = assets.firstObject;
@@ -151,36 +135,29 @@ static CGFloat rowHeight = 60.f;
 {
     MMPhotoAssetController * controller = [[MMPhotoAssetController alloc] init];
     controller.photoAlbum = photoAlbum;
-    controller.maxNumber = self.maxNumber;
-    controller.showOriginOption = self.showOriginOption;
     controller.showVideo = self.showVideo;
-    controller.singleOption = self.singleOption;
-    controller.cropOption = self.cropOption;
-    controller.cropSize = self.cropSize;
+    controller.maximumNumber = self.maximumNumber;
     controller.mainColor = self.mainColor;
-    controller.maskImgName = self.maskImgName;
-    controller.markedImgName = self.markedImgName;
-
-    WS(wSelf);
-    [controller setCompletion:^(NSArray *info, BOOL isOrigin, BOOL isCancel){
-        wSelf.isOrigin = isOrigin;
-        if (isCancel) { // 取消
-            if ([wSelf.delegate respondsToSelector:@selector(mmPhotoPickerControllerDidCancel:)]) {
-                [wSelf.delegate mmPhotoPickerControllerDidCancel:wSelf];
-            } else {
-                [wSelf dismissViewControllerAnimated:YES completion:nil];
-            }
-        } else { // 确认选择
-            if ([wSelf.delegate respondsToSelector:@selector(mmPhotoPickerController:didFinishPickingMediaWithInfo:)]) {
-                [wSelf.delegate mmPhotoPickerController:wSelf didFinishPickingMediaWithInfo:info];
-            }
+    controller.unselectIcon = self.unselectIcon;
+    controller.selectIcon = self.selectIcon;
+    WEAKSELF
+    [controller setOnCompletion:^(NSArray *mediaInfo) { // 确认选择
+        if ([weakSelf.delegate respondsToSelector:@selector(mmPhotoPickerController:didFinishPickingMediaWithInfo:)]) {
+            [weakSelf.delegate mmPhotoPickerController:weakSelf didFinishPickingMediaWithInfo:mediaInfo];
+        }
+    }];
+    [controller setOnCancel:^{ // 取消
+        if ([weakSelf.delegate respondsToSelector:@selector(mmPhotoPickerControllerDidCancel:)]) {
+            [weakSelf.delegate mmPhotoPickerControllerDidCancel:weakSelf];
+        } else {
+            [weakSelf dismissViewControllerAnimated:YES completion:nil];
         }
     }];
     [self.navigationController pushViewController:controller animated:animated];
 }
 
 #pragma mark - 取消
-- (void)barButtonItemAction:(UIButton *)sender
+- (void)rightBarItemAction
 {
     if ([self.delegate respondsToSelector:@selector(mmPhotoPickerControllerDidCancel:)]) {
         [self.delegate mmPhotoPickerControllerDidCancel:self];
@@ -202,8 +179,8 @@ static CGFloat rowHeight = 60.f;
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    static NSString * CellIdentifier = @"MMPhotoAlbumCell";
-    MMPhotoAlbumCell * cell = [tableView dequeueReusableCellWithIdentifier:CellIdentifier];
+    static NSString *CellIdentifier = @"MMPhotoAlbumCell";
+    MMPhotoAlbumCell *cell = [tableView dequeueReusableCellWithIdentifier:CellIdentifier];
     if (cell == nil) {
         cell = [[MMPhotoAlbumCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellIdentifier];
     }
@@ -211,20 +188,20 @@ static CGFloat rowHeight = 60.f;
     cell.selectionStyle = UITableViewCellSelectionStyleGray;
     cell.textLabel.textColor = [UIColor grayColor];
     // 封面
-    MMPhotoAlbum * album = [self.photoAlbums objectAtIndex:indexPath.row];
+    MMPhotoAlbum *album = [self.photoAlbums objectAtIndex:indexPath.row];
     if (album.coverAsset) {
-        [MMPhotoUtil getImageWithAsset:album.coverAsset imageSize:cell.imageView.size completion:^(UIImage *image) {
+        [MMPhotoUtil getImageWithAsset:album.coverAsset imageSize:cell.imageView.bounds.size completion:^(UIImage *image) {
             cell.imageView.image = image;
         }];
     } else {
-        cell.imageView.image = [UIImage imageNamed:@"mmphoto_empty"];
+        cell.imageView.image = [MMPhotoUtil imageNamed:@"mmphoto_empty"];
     }
     // 数量
-    NSString * text = [NSString stringWithFormat:@"%@  (%ld)",album.name, (long)album.assetCount];
-    NSMutableAttributedString * attributedText = [[NSMutableAttributedString alloc] initWithString:text];
-    [attributedText addAttribute:NSForegroundColorAttributeName value:[UIColor blackColor] range:NSMakeRange(0,[album.name length])];
-    [attributedText addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:17.0] range:NSMakeRange(0,[album.name length])];
-    cell.textLabel.attributedText = attributedText;
+    NSString *text = [NSString stringWithFormat:@"%@  (%ld)",album.name, (long)album.assetCount];
+    NSMutableAttributedString *attText = [[NSMutableAttributedString alloc] initWithString:text];
+    [attText addAttribute:NSForegroundColorAttributeName value:[UIColor blackColor] range:NSMakeRange(0,[album.name length])];
+    [attText addAttribute:NSFontAttributeName value:[UIFont boldSystemFontOfSize:17.0] range:NSMakeRange(0,[album.name length])];
+    cell.textLabel.attributedText = attText;
     return cell;
 }
 
@@ -243,24 +220,18 @@ static CGFloat rowHeight = 60.f;
 {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     // 跳转
-    MMPhotoAlbum * album = [self.photoAlbums objectAtIndex:indexPath.row];
+    MMPhotoAlbum *album = [self.photoAlbums objectAtIndex:indexPath.row];
     [self jumpToAlbum:album animated:YES];
-}
-
-#pragma mark - UIAlertViewDelegate
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
-{
-    [self barButtonItemAction:nil];
 }
 
 #pragma mark - lazy load
 - (UITableView *)tableView
 {
     if (!_tableView) {
-        _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, self.view.width, self.view.height-kTopHeight) style:UITableViewStyleGrouped];
+        _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, self.view.bounds.size.height-kTopHeight) style:UITableViewStyleGrouped];
         _tableView.delegate = self;
         _tableView.dataSource = self;
-        _tableView.rowHeight = rowHeight;
+        _tableView.rowHeight = kRowHeight;
         _tableView.showsHorizontalScrollIndicator = NO;
         _tableView.backgroundColor = [UIColor clearColor];
         _tableView.separatorColor = [[UIColor lightGrayColor] colorWithAlphaComponent:0.5];
@@ -297,8 +268,8 @@ static CGFloat rowHeight = 60.f;
     self.imageView.contentMode = UIViewContentModeScaleAspectFill;
     self.imageView.contentScaleFactor = [UIScreen mainScreen].scale;
     self.imageView.clipsToBounds = YES;
-    self.imageView.frame = CGRectMake(0, 0, rowHeight, rowHeight);
-    self.textLabel.frame = CGRectMake(self.imageView.right + 10, 0, self.width - rowHeight - 40, rowHeight);
+    self.imageView.frame = CGRectMake(0, 0, kRowHeight, kRowHeight);
+    self.textLabel.frame = CGRectMake(kRowHeight + 10, 0, self.bounds.size.width - kRowHeight - 40, kRowHeight);
     self.separatorInset = UIEdgeInsetsZero;
 }
 

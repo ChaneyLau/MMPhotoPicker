@@ -7,9 +7,10 @@
 //
 
 #import "MMPhotoUtil.h"
-#import "MMPhotoPickerMacros.h"
+#import "MMPhotoMacro.h"
+#import "UIViewController+Top.h"
 
-static NSString * kPhotoAlbum = @"MMPhotoPicker";
+static NSString *kPhotoAlbum = @"MMPhotoPicker";
 
 @implementation MMPhotoUtil
 
@@ -54,7 +55,7 @@ void GCD_MAIN(dispatch_block_t block)
                 } completionHandler:^(BOOL success, NSError * _Nullable error) {
                     if (!success) {
                         NSLog(@"保存至【相机胶卷】失败");
-                        GCD_MAIN(^{ // 主线程
+                        dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
                             if (completion) completion(NO);
                         });
                         return ;
@@ -68,7 +69,7 @@ void GCD_MAIN(dispatch_block_t block)
                         if (!success) {
                             NSLog(@"保存【自定义相册】失败");
                         }
-                        GCD_MAIN(^{ // 主线程
+                        dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
                             if (completion) completion(success);
                         });
                     }];
@@ -81,9 +82,11 @@ void GCD_MAIN(dispatch_block_t block)
                 if (oldStatus == PHAuthorizationStatusNotDetermined) {
                     return;
                 }
-                GCD_MAIN(^{ // 主线程 
-                    UIAlertView * alert = [[UIAlertView alloc] initWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" delegate:nil cancelButtonTitle:@"知道了" otherButtonTitles:nil, nil];
-                    [alert show];
+                dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
+                    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                    }]];
+                    [[UIViewController topViewController] presentViewController:alert animated:YES completion:nil];
                 });
                 break;
             }
@@ -128,7 +131,7 @@ void GCD_MAIN(dispatch_block_t block)
                 } completionHandler:^(BOOL success, NSError * _Nullable error) {
                     if (!success) {
                         NSLog(@"保存至【相机胶卷】失败");
-                        GCD_MAIN(^{ // 主线程
+                        dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
                             if (completion) completion(NO);
                         });
                         return ;
@@ -142,7 +145,7 @@ void GCD_MAIN(dispatch_block_t block)
                         if (!success) {
                             NSLog(@"保存【自定义相册】失败");
                         }
-                        GCD_MAIN(^{ // 主线程
+                        dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
                             if (completion) completion(success);
                         });
                     }];
@@ -155,9 +158,11 @@ void GCD_MAIN(dispatch_block_t block)
                 if (oldStatus == PHAuthorizationStatusNotDetermined) {
                     return;
                 }
-                GCD_MAIN(^{ // 主线程
-                    UIAlertView * alert = [[UIAlertView alloc] initWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" delegate:nil cancelButtonTitle:@"知道了" otherButtonTitles:nil, nil];
-                    [alert show];
+                dispatch_async(dispatch_get_main_queue(), ^{ // 主线程
+                    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"提示" message:@"请在设置>隐私>照片中开启权限" preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+                    }]];
+                    [[UIViewController topViewController] presentViewController:alert animated:YES completion:nil];
                 });
                 break;
             }
@@ -203,21 +208,21 @@ void GCD_MAIN(dispatch_block_t block)
         [assetInfo setObject:phAsset.location forKey:MMPhotoLocation];
     }
     // == 请求图片和视频资源
-    PHImageRequestOptions * option = [[PHImageRequestOptions alloc] init];
+    PHImageRequestOptions *option = [[PHImageRequestOptions alloc] init];
     option.deliveryMode = PHImageRequestOptionsDeliveryModeOpportunistic;
     option.networkAccessAllowed = YES;
     
     PHImageManager * manager = [PHImageManager defaultManager];
     [manager requestImageDataForAsset:phAsset options:option resultHandler:^(NSData * _Nullable imageData, NSString * _Nullable dataUTI, UIImageOrientation orientation, NSDictionary * _Nullable info) {
         // == 图片
-        UIImage * image = [UIImage imageWithData:imageData];
+        UIImage *image = [UIImage imageWithData:imageData];
         [assetInfo setObject:image forKey:MMPhotoOriginalImage];
         [assetInfo setObject:@(orientation) forKey:MMPhotoOrientation];
         // == 视频
         if (phAsset.mediaType == PHAssetMediaTypeVideo) {
             [manager requestAVAssetForVideo:phAsset options:nil resultHandler:^(AVAsset * _Nullable asset, AVAudioMix * _Nullable audioMix, NSDictionary * _Nullable info) {
-                NSURL * videoURL = ((AVURLAsset *)asset).URL;
-                [assetInfo setObject:videoURL forKey:MMPhotoVideoURL];
+                [assetInfo setObject:((AVURLAsset *)asset).URL forKey:MMPhotoVideoURL];
+                [assetInfo setObject:@(phAsset.duration) forKey:MMPhotoVideoDuration];
                 if (completion) completion(assetInfo);
             }];
         } else {
@@ -243,77 +248,12 @@ void GCD_MAIN(dispatch_block_t block)
     return format;
 }
 
-+ (UIImage *)fixOrientation:(UIImage *)aImage
+// 获取图片
++ (UIImage *)imageNamed:(NSString *)imageName
 {
-    if (aImage.imageOrientation == UIImageOrientationUp) {
-        return aImage;
-    }
-    
-    CGAffineTransform transform = CGAffineTransformIdentity;
-    switch (aImage.imageOrientation)
-    {
-        case UIImageOrientationDown:
-        case UIImageOrientationDownMirrored:
-            transform = CGAffineTransformTranslate(transform, aImage.size.width, aImage.size.height);
-            transform = CGAffineTransformRotate(transform, M_PI);
-            break;
-            
-        case UIImageOrientationLeft:
-        case UIImageOrientationLeftMirrored:
-            transform = CGAffineTransformTranslate(transform, aImage.size.width, 0);
-            transform = CGAffineTransformRotate(transform, M_PI_2);
-            break;
-            
-        case UIImageOrientationRight:
-        case UIImageOrientationRightMirrored:
-            transform = CGAffineTransformTranslate(transform, 0, aImage.size.height);
-            transform = CGAffineTransformRotate(transform, -M_PI_2);
-            break;
-            
-        default:
-            break;
-    }
-    
-    switch (aImage.imageOrientation)
-    {
-        case UIImageOrientationUpMirrored:
-        case UIImageOrientationDownMirrored:
-            transform = CGAffineTransformTranslate(transform, aImage.size.width, 0);
-            transform = CGAffineTransformScale(transform, -1, 1);
-            break;
-            
-        case UIImageOrientationLeftMirrored:
-        case UIImageOrientationRightMirrored:
-            transform = CGAffineTransformTranslate(transform, aImage.size.height, 0);
-            transform = CGAffineTransformScale(transform, -1, 1);
-            break;
-        default:
-            break;
-    }
-    CGContextRef ctx = CGBitmapContextCreate(NULL, aImage.size.width, aImage.size.height,
-                                             CGImageGetBitsPerComponent(aImage.CGImage), 0,
-                                             CGImageGetColorSpace(aImage.CGImage),
-                                             CGImageGetBitmapInfo(aImage.CGImage));
-    CGContextConcatCTM(ctx, transform);
-    switch (aImage.imageOrientation)
-    {
-        case UIImageOrientationLeft:
-        case UIImageOrientationLeftMirrored:
-        case UIImageOrientationRight:
-        case UIImageOrientationRightMirrored:
-            CGContextDrawImage(ctx, CGRectMake(0,0,aImage.size.height,aImage.size.width), aImage.CGImage);
-            break;
-            
-        default:
-            CGContextDrawImage(ctx, CGRectMake(0,0,aImage.size.width,aImage.size.height), aImage.CGImage);
-            break;
-    }
-    
-    CGImageRef cgimg = CGBitmapContextCreateImage(ctx);
-    UIImage * img = [UIImage imageWithCGImage:cgimg];
-    CGContextRelease(ctx);
-    CGImageRelease(cgimg);
-    return img;
+    NSBundle *bundle = [NSBundle bundleForClass:[self class]];
+    UIImage *image = [UIImage imageNamed:imageName inBundle:bundle compatibleWithTraitCollection:nil];
+    return image;
 }
 
 @end

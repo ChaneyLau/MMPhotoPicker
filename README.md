@@ -6,44 +6,30 @@
 [![License MIT](https://img.shields.io/badge/license-MIT-green.svg?style=flat)](https://raw.githubusercontent.com/ChellyLau/MMPhotoPicker/master/LICENSE)&nbsp;
 
 
-`MMPhotoPicker`基于`Photos`框架，集成了视频、图片选择器（支持多选、单选、对图片进行裁剪、选择原图、视频图片预览）以及创建自定义相册，并保存视频、图片到自定义相册。基于`AssetsLibrary`框架的图片选择器，可以参考[MMImagePicker](https://github.com/ChellyLau/MMImagePicker)。
+`MMPhotoPicker`基于`Photos`框架，集成了视频&图片选择器以及创建自定义相册，并保存视频、图片到自定义相册。
 
 
 ## Photos框架简述
 
-![MMPhotoPicker](Photos.png)
+![MMPhotoPicker](Photos.jpg)
 
 ## 属性
 
 ```objc
 MMPhotoPickerController属性介绍：
    
-// 说明：NOTE!!!
-// 优先级 cropOption > singleOption > maxNumber
-// cropOption = YES 时，不显示视频
-
-// 是否回传原图 [可用于控制图片压系数]
-@property (nonatomic, assign) BOOL isOrigin;
-// 是否显示空相册 [默认NO]
-@property (nonatomic, assign) BOOL showEmptyAlbum;
 // 是否显示视频 [默认NO]
 @property (nonatomic, assign) BOOL showVideo;
-// 是否显示原图选项 [默认NO]
-@property (nonatomic, assign) BOOL showOriginOption;
-// 是否只选取一张 [默认NO]
-@property (nonatomic, assign) BOOL singleOption;
-// 是否选取一张且需要裁剪 [默认NO]
-@property (nonatomic, assign) BOOL cropOption;
-// 裁剪的大小[默认方形、屏幕宽度]
-@property (nonatomic, assign) CGSize cropSize;
 // 最大选择数目[默认9张、如果显示视频，也包括视频数量]
-@property (nonatomic, assign) NSInteger maxNumber;
-// 主色调[默认红色]
-@property (nonatomic, strong) UIColor * mainColor;
-// 选中的遮罩图片名称[默认为本控件内图片]
-@property (nonatomic, copy) NSString * maskImgName;
-// 原图选项选中图片名称[默认为本控件内图片]
-@property (nonatomic, copy) NSString * markedImgName;
+@property (nonatomic, assign) NSInteger maximumNumber;
+
+// 主色调[默认红色#FC2948]
+@property (nonatomic, strong) UIColor *mainColor;
+// 未选中图片[用于是否选择原图标记]
+@property (nonatomic, strong) UIImage *unselectIcon;
+// 选中图片[用于是否选择原图标记、图片选择标记]
+@property (nonatomic, strong) UIImage *selectIcon;
+
 // 代理
 @property (nonatomic, assign) id<MMPhotoPickerDelegate> delegate;
 
@@ -65,6 +51,7 @@ MMPhotoPickerController属性介绍：
  图片方向 MMPhotoOrientation
  原始图片 MMPhotoOriginalImage
  视频路径 MMPhotoVideoURL
+ 视频时长 MMPhotoVideoDuration
  */
 - (void)mmPhotoPickerController:(MMPhotoPickerController *)picker didFinishPickingMediaWithInfo:(NSArray<NSDictionary *> *)info;
 - (void)mmPhotoPickerControllerDidCancel:(MMPhotoPickerController *)picker;
@@ -82,11 +69,8 @@ MMPhotoPickerController属性介绍：
 ```objc
 MMPhotoPickerController * controller = [[MMPhotoPickerController alloc] init];
 controller.delegate = self;
-controller.showEmptyAlbum = YES;
 controller.showVideo = YES;
-controller.cropOption = NO;
-controller.singleOption = NO;
-controller.maxNumber = 6;
+controller.maximumNumber = 12;
  
 UINavigationController * navigation = [[UINavigationController alloc] initWithRootViewController:controller];
 [self.navigationController presentViewController:navigation animated:YES completion:nil];
@@ -124,11 +108,8 @@ MMPhotoUtil类中：
 
 ## 效果图
 
-![MMPhotoPicker](Screenshot.png)
+![MMPhotoPicker](Screenshot.jpg)
 
-## 后记
-
-不定时更新，如有问题欢迎给我[留言](https://github.com/ChellyLau/MMPhotoPicker/issues)，我会及时回复。如果这个工具对你有一些帮助，请给我一个star，谢谢🌹🌹。
 
 
 

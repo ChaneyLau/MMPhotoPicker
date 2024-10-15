@@ -20,7 +20,7 @@ static NSString * MSelectedKey = @"selected";
 
 - (BOOL)selected
 {
-    NSNumber * selected = objc_getAssociatedObject(self, &MSelectedKey);
+    NSNumber *selected = objc_getAssociatedObject(self, &MSelectedKey);
     return selected.boolValue;
 }
 
