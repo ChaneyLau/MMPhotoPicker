@@ -1,0 +1,13 @@
+platform :ios, '8.0'
+
+source 'https://github.com/CocoaPods/Specs.git'
+ 
+target 'MMPhotoPickerPodDemo' do
+
+  pod 'MMPhotoPicker'
+  pod 'Masonry'
+
+end
+
+install! 'cocoapods',
+  :disable_input_output_paths => true

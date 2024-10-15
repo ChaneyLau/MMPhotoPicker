@@ -1,0 +1,20 @@
+PODS:
+  - Masonry (1.1.0)
+  - MMPhotoPicker (1.9)
+
+DEPENDENCIES:
+  - Masonry
+  - MMPhotoPicker
+
+SPEC REPOS:
+  https://github.com/CocoaPods/Specs.git:
+    - Masonry
+    - MMPhotoPicker
+
+SPEC CHECKSUMS:
+  Masonry: 678fab65091a9290e40e2832a55e7ab731aad201
+  MMPhotoPicker: de257cb28ae5a5a9755a01f4ff42410a10aea724
+
+PODFILE CHECKSUM: e848d0f9e6d98fc21b107fd2b65995b7568e644a
+
+COCOAPODS: 1.15.2
